@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="only light">
+<title>¡Ayúdame en mi proyecto!</title>
+<style>
+  :root { --fondo:#ffffff; --tinta:#1d2433; --suave:#6b7385; --acento:#3b5bdb; --acento-off:#b9c3e8;
+          --gris:#e7eaf0; --borde:#d5d9e2; --lienzo:#ffffff; color-scheme:only light; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--fondo); color:var(--tinta);
+               font-family:system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:420px; margin:0 auto; padding:24px 16px; min-height:100vh; min-height:100dvh;
+         display:flex; flex-direction:column; }
+  .pantalla { display:none; flex:1; flex-direction:column; gap:14px; }
+  .pantalla.activa { display:flex; }
+  .tit { font-size:22px; font-weight:700; margin:0; }
+  p { margin:0; font-size:16px; line-height:1.4; }
+  .chico { font-size:14px; color:var(--suave); }
+  .centro { text-align:center; }
+  .g { font-size:15px; font-weight:600; }
+  .opc { display:flex; flex-wrap:wrap; gap:6px; }
+  .opc button { border:1px solid var(--borde); background:var(--fondo); border-radius:999px; padding:8px 12px;
+                font-size:15px; cursor:pointer; color:var(--tinta); }
+  .opc button.on { background:var(--acento); border-color:var(--acento); color:#fff; }
+  .btn { border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:600; cursor:pointer; }
+  .pri { background:var(--acento); color:#fff; }
+  .pri:disabled { background:var(--acento-off); cursor:default; }
+  .sec { background:var(--gris); color:var(--tinta); }
+  .esp { flex:1; }
+  .cont { display:flex; justify-content:space-between; font-size:14px; color:var(--suave); }
+  .barra { height:6px; background:var(--gris); border-radius:3px; overflow:hidden; }
+  .barra i { display:block; height:100%; width:0; background:var(--acento); transition:width .2s; }
+  .pide { text-align:center; }
+  .pide .s { font-size:24px; font-weight:700; line-height:1.25; min-height:2.5em;
+             display:flex; align-items:center; justify-content:center; }
+  .pide .n { font-size:15px; color:var(--suave); min-height:1.2em; }
+  canvas { width:min(100%, 55vh); aspect-ratio:1; align-self:center; border:2px dashed var(--borde);
+           border-radius:14px; touch-action:none; background:var(--lienzo); cursor:crosshair; }
+  .tres { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .tres .btn { padding:13px 4px; font-size:15px; }
+  .ok { font-size:64px; text-align:center; margin-top:32px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="p-inicio" class="pantalla activa">
+    <p class="tit">¡Hola! Ayúdame en mi proyecto ✍️</p>
+    <p>Vas a dibujar 10 números o signos al azar. Toma un minuto.</p>
+    <p>Hay números y signos que se escriben de más de una forma: traza la que usas con naturalidad.</p>
+    <p class="chico">Es anónimo: no pedimos nombre ni correo. Tus dibujos se usan solo para entrenar el reconocimiento de escritura.</p>
+    <span class="g">Tu edad</span>
+    <div class="opc" id="op-edad">
+      <button data-v="menos de 14">menos de 14</button><button data-v="14–18">14–18</button>
+      <button data-v="19–25">19–25</button><button data-v="26–40">26–40</button>
+      <button data-v="más de 40">más de 40</button>
+    </div>
+    <span class="g">Escribes con la mano…</span>
+    <div class="opc" id="op-mano">
+      <button data-v="diestra">diestra</button><button data-v="zurda">zurda</button>
+    </div>
+    <div class="esp"></div>
+    <button class="btn pri" id="b-empezar" disabled>Empezar</button>
+  </section>
+
+  <section id="p-dibujo" class="pantalla">
+    <div class="cont"><span id="t-ronda">Ronda 1</span><span id="t-cont">1 de 10</span></div>
+    <div class="barra"><i id="t-barra"></i></div>
+    <div class="pide"><div class="n">Dibuja:</div><div class="s" id="t-nombre"></div></div>
+    <p class="chico centro" id="t-nota"></p>
+    <canvas id="lienzo"></canvas>
+    <div class="esp"></div>
+    <div class="tres">
+      <button class="btn sec" id="b-borrar">Borrar</button>
+      <button class="btn sec" id="b-saltar">Saltar</button>
+      <button class="btn pri" id="b-sig" disabled>Siguiente</button>
+    </div>
+  </section>
+
+  <section id="p-final" class="pantalla">
+    <div class="ok">🎉</div>
+    <p class="tit centro">¡Gracias!</p>
+    <p class="centro" id="t-envio"></p>
+    <p class="chico centro" id="t-animo">¿Te animas con otros 10? Cada ronda ayuda mucho.</p>
+    <div class="esp"></div>
+    <button class="btn pri" id="b-otra">Otra ronda</button>
+    <button class="btn sec" id="b-terminar">Terminar</button>
+  </section>
+</main>
+
+<script id="logica">
+const VERSION = 2;
+const TAM_RONDA = 10;
+const LIMITE_TRAZOS = 45000;
+const SIMBOLOS = ['0','1','2','3','4','5','6','7','8','9',
+  '+','−','·','×','÷/','=','(',')','<','>','≤','≥','√'];
+// '÷/': un solo signo de división; cada persona lo dibuja como lo hace normalmente (÷, / u otra forma).
+// Lo que se muestra: solo el nombre, nunca el símbolo, para no influir en cómo lo dibujan.
+const NOMBRES = {
+  '0': 'el número cero', '1': 'el número uno', '2': 'el número dos', '3': 'el número tres',
+  '4': 'el número cuatro', '5': 'el número cinco', '6': 'el número seis', '7': 'el número siete',
+  '8': 'el número ocho', '9': 'el número nueve',
+  '+': 'el signo más', '−': 'el signo menos',
+  '×': 'el signo por, en forma de cruz', '·': 'el signo por, en forma de punto',
+  '÷/': 'el signo división',
+  '=': 'el signo igual', '(': 'abre paréntesis', ')': 'cierra paréntesis',
+  '<': 'el signo menor que', '>': 'el signo mayor que',
+  '≤': 'el signo menor o igual que', '≥': 'el signo mayor o igual que',
+  '√': 'el signo raíz',
+};
+
+const NOTA_GENERAL = 'Dibújalo como lo haces tú normalmente.';
+const CON_DIRECCION = ['<', '>', '≤', '≥'];
+function notaDe(simbolo) {
+  return CON_DIRECCION.includes(simbolo)
+    ? 'Dibújalo como lo haces tú normalmente, apuntando en la dirección que consideres correcta.'
+    : NOTA_GENERAL;
+}
+
+function barajar(lista, rng) {
+  const a = lista.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Toma 10 símbolos de la baraja, sin repetir y con como máximo uno de < > ≤ ≥ por ronda.
+// Los que no caben quedan para la ronda siguiente. Si la baraja no alcanza, se baraja la lista
+// completa de nuevo (lo que sobraba de la vuelta anterior se descarta).
+function tomarRonda(baraja, rng) {
+  const ronda = [];
+  const conDir = (s) => CON_DIRECCION.includes(s);
+  const cabe = (s) => ronda.length < TAM_RONDA && !ronda.includes(s) &&
+    !(conDir(s) && ronda.some(conDir));
+  const llenar = (lista) => {
+    const resto = [];
+    for (const s of lista) (cabe(s) ? ronda : resto).push(s);
+    return resto;
+  };
+  let resto = llenar(baraja);
+  if (ronda.length < TAM_RONDA) resto = llenar(barajar(SIMBOLOS, rng));
+  return { ronda, baraja: resto };
+}
+
+function esDibujoValido(trazos, simbolo) {
+  const total = trazos.reduce((n, t) => n + t.length, 0);
+  return total >= (simbolo === '·' ? 1 : 2);
+}
+
+function punto(x, y, t, presion) {
+  const r = (v, d) => Math.round(v * d) / d;
+  const p = presion > 0 ? r(presion, 100) : 0.5;
+  return [r(x, 10), r(y, 10), Math.round(t), p];
+}
+
+function crearSesion(rng) {
+  const abc = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < 8; i++) s += abc[Math.floor(rng() * abc.length)];
+  return s;
+}
+
+function filasDeRonda({ sesion, ronda, edad, mano, dibujos }) {
+  const filas = [];
+  for (const d of dibujos) {
+    const trazos = JSON.stringify(d.trazos);
+    if (trazos.length > LIMITE_TRAZOS) continue;
+    filas.push({ version: VERSION, sesion, ronda, edad, mano, simbolo: d.simbolo,
+      dispositivo: d.dispositivo, ancho: d.ancho, alto: d.alto, trazos });
+  }
+  return filas;
+}
+</script>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const EN_GOOGLE = typeof google !== 'undefined' && google.script && google.script.run;
+  // Dirección del script de Google que guarda en la hoja (se usa cuando la página está en GitHub Pages).
+  const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbzDWEsDAkc1Z-oICQMqpGA2cggWlWhO5dYvb8lsVpA80qwTJaXZxpdh4IyoMqzuqzH3CQ/exec';
+  // 'google': dentro de Apps Script · 'web': publicada en internet · 'local': abierta como archivo.
+  const MODO = EN_GOOGLE ? 'google' : (/^https?:$/.test(location.protocol) ? 'web' : 'local');
+  const CLAVE = 'trazos-pendientes';
+
+  const st = {
+    sesion: crearSesion(Math.random), edad: null, mano: null,
+    baraja: barajar(SIMBOLOS, Math.random), ronda: 0, simbolos: [], i: 0, dibujos: [],
+    trazos: [], t0: null, dispositivo: null,
+  };
+
+  // ---------- Pantallas ----------
+  function mostrar(id) {
+    document.querySelectorAll('.pantalla').forEach((p) => p.classList.toggle('activa', p.id === id));
+    if (id === 'p-dibujo') ajustarLienzo();
+  }
+
+  function elegir(grupo, campo) {
+    $(grupo).addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      $(grupo).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+      st[campo] = b.dataset.v;
+      $('b-empezar').disabled = !(st.edad && st.mano);
+    });
+  }
+  elegir('op-edad', 'edad');
+  elegir('op-mano', 'mano');
+
+  function empezarRonda() {
+    const r = tomarRonda(st.baraja, Math.random);
+    st.baraja = r.baraja; st.simbolos = r.ronda;
+    st.ronda += 1; st.i = 0; st.dibujos = [];
+    mostrar('p-dibujo');
+    mostrarSimbolo();
+  }
+
+  function mostrarSimbolo() {
+    const s = st.simbolos[st.i];
+    $('t-nombre').textContent = NOMBRES[s];
+    $('t-nota').textContent = notaDe(s);
+    $('t-ronda').textContent = 'Ronda ' + st.ronda;
+    $('t-cont').textContent = (st.i + 1) + ' de ' + st.simbolos.length;
+    $('t-barra').style.width = (100 * st.i / st.simbolos.length) + '%';
+    limpiar();
+  }
+
+  function avanzar() {
+    st.i += 1;
+    if (st.i >= st.simbolos.length) terminarRonda();
+    else mostrarSimbolo();
+  }
+
+  // ---------- Lienzo ----------
+  const c = $('lienzo');
+  const g = c.getContext('2d');
+  let activo = null;
+
+  function ajustarLienzo() {
+    const r = c.getBoundingClientRect();
+    const d = window.devicePixelRatio || 1;
+    c.width = Math.round(r.width * d);
+    c.height = Math.round(r.height * d);
+    g.setTransform(d, 0, 0, d, 0, 0);
+    g.lineWidth = 6; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = '#000000';
+    redibujar();
+  }
+
+  function redibujar() {
+    // El fondo blanco se pinta dentro del lienzo: así el modo oscuro del teléfono no lo cambia.
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    for (const tr of st.trazos) {
+      if (!tr.length) continue;
+      g.beginPath();
+      g.moveTo(tr[0][0], tr[0][1]);
+      if (tr.length === 1) g.lineTo(tr[0][0] + 0.1, tr[0][1]);
+      for (let k = 1; k < tr.length; k++) g.lineTo(tr[k][0], tr[k][1]);
+      g.stroke();
+    }
+  }
+
+  function limpiar() {
+    st.trazos = []; st.t0 = null; st.dispositivo = null;
+    redibujar();
+    actualizarBotones();
+  }
+
+  function actualizarBotones() {
+    $('b-sig').disabled = !esDibujoValido(st.trazos, st.simbolos[st.i]);
+  }
+
+  function agregar(e) {
+    const r = c.getBoundingClientRect();
+    st.trazos[st.trazos.length - 1].push(
+      punto(e.clientX - r.left, e.clientY - r.top, e.timeStamp - st.t0, e.pressure));
+  }
+
+  c.addEventListener('pointerdown', (e) => {
+    if (activo !== null) return;
+    activo = e.pointerId;
+    c.setPointerCapture(e.pointerId);
+    if (st.t0 === null) st.t0 = e.timeStamp;
+    if (!st.dispositivo) st.dispositivo = e.pointerType;
+    st.trazos.push([]);
+    agregar(e);
+    redibujar(); actualizarBotones();
+    e.preventDefault();
+  });
+  c.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== activo) return;
+    const lista = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (lista.length ? lista : [e])) agregar(ev);
+    redibujar(); actualizarBotones();
+  });
+  const soltar = (e) => { if (e.pointerId === activo) activo = null; };
+  c.addEventListener('pointerup', soltar);
+  c.addEventListener('pointercancel', soltar);
+  window.addEventListener('resize', () => {
+    if ($('p-dibujo').classList.contains('activa')) { ajustarLienzo(); limpiar(); }
+  });
+
+  // ---------- Botones ----------
+  $('b-empezar').onclick = empezarRonda;
+  $('b-otra').onclick = empezarRonda;
+  $('b-borrar').onclick = limpiar;
+  $('b-saltar').onclick = avanzar;
+  $('b-sig').onclick = () => {
+    const s = st.simbolos[st.i];
+    if (!esDibujoValido(st.trazos, s)) return;
+    const r = c.getBoundingClientRect();
+    st.dibujos.push({ simbolo: s, dispositivo: st.dispositivo || 'desconocido',
+      ancho: Math.round(r.width), alto: Math.round(r.height), trazos: st.trazos });
+    avanzar();
+  };
+  $('b-terminar').onclick = () => {
+    $('t-animo').textContent = 'Ya puedes cerrar esta página.';
+    $('b-otra').style.display = 'none';
+    $('b-terminar').style.display = 'none';
+  };
+
+  // ---------- Fin de ronda: enviar o descargar ----------
+  let pendientes = leerPendientes();
+  let enviando = false;
+
+  function leerPendientes() {
+    try { return JSON.parse(localStorage.getItem(CLAVE) || '[]'); } catch (_) { return []; }
+  }
+  function guardarPendientes() {
+    try { localStorage.setItem(CLAVE, JSON.stringify(pendientes)); } catch (_) { /* sin reintento */ }
+  }
+  function aviso(t) { $('t-envio').textContent = t; }
+
+  function terminarRonda() {
+    const filas = filasDeRonda({ sesion: st.sesion, ronda: st.ronda, edad: st.edad, mano: st.mano,
+      dibujos: st.dibujos });
+    mostrar('p-final');
+    if (MODO !== 'local') {
+      pendientes = pendientes.concat(filas);
+      guardarPendientes();
+      enviar();
+    } else if (filas.length) {
+      descargar(filas);
+      aviso('Modo local: se descargó el archivo de esta ronda.');
+    } else {
+      aviso('');
+    }
+  }
+
+  function enviar() {
+    if (enviando) return;
+    if (!pendientes.length) { aviso(''); return; }
+    enviando = true;
+    const lote = pendientes.slice();
+    aviso('Enviando…');
+    const bien = () => {
+      enviando = false;
+      pendientes = pendientes.slice(lote.length);
+      guardarPendientes();
+      aviso('¡Tus dibujos ya se enviaron!');
+    };
+    const mal = () => {
+      enviando = false;
+      aviso('Quedó guardado en tu teléfono; se enviará solo.');
+    };
+    if (MODO === 'google') {
+      google.script.run.withSuccessHandler(bien).withFailureHandler(mal).guardar(lote);
+    } else {
+      fetch(URL_GUARDAR, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(lote) })
+        .then((r) => r.json())
+        .then((j) => (j && j.ok ? bien() : mal()))
+        .catch(mal);
+    }
+  }
+
+  function descargar(filas) {
+    const blob = new Blob([JSON.stringify(filas, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'trazos-' + st.sesion + '-ronda' + st.ronda + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  if (MODO !== 'local' && pendientes.length) enviar();
+})();
+</script>
+</body>
+</html>
